@@ -141,7 +141,6 @@ func (cp *CloudProvider) Initialize(clientBuilder controller.ControllerClientBui
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("failed to create kubeclient: %v", err))
 	}
-	stop := make(chan struct{})
 
 	factory := informers.NewSharedInformerFactory(cp.kubeclient, 5*time.Minute)
 
@@ -154,7 +153,7 @@ func (cp *CloudProvider) Initialize(clientBuilder controller.ControllerClientBui
 	go nodeInformer.Informer().Run(wait.NeverStop)
 	serviceInformer := factory.Core().V1().Services()
 	go serviceInformer.Informer().Run(wait.NeverStop)
-	go faultDomainController.Run(stop)
+	go faultDomainController.Run(wait.NeverStop)
 
 	cp.logger.Info("Waiting for node informer cache to sync")
 	if !cache.WaitForCacheSync(wait.NeverStop, nodeInformer.Informer().HasSynced, serviceInformer.Informer().HasSynced) {
