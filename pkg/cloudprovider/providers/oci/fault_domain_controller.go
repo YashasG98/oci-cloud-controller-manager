@@ -23,7 +23,8 @@ import (
 	"k8s.io/client-go/tools/record"
 )
 
-var MaxRetries = 20
+const MaxRetries = 20
+const FaultDomainLabel = "oci.oraclecloud.com/fault-domain"
 
 type FaultDomainController struct {
 	nodeInformer coreinformers.NodeInformer
@@ -63,7 +64,10 @@ func NewFaultDomainController(
 			node := obj.(*v1.Node)
 			fdc.queue.Add(node.Name)
 		},
-		UpdateFunc: fdc.updateFunc,
+		UpdateFunc: func(_,newObj interface{}) {
+			node := newObj.(*v1.Node)
+			fdc.queue.Add(node.Name)
+		},
 	})
 
 	return fdc
@@ -84,27 +88,14 @@ func (fdc *FaultDomainController) Run(stopCh <-chan struct{}) {
 	wait.Until(fdc.runWorker, time.Second, stopCh)
 }
 
-func (fdc *FaultDomainController) updateFunc (_, newObj interface{}){
-	node := newObj.(*v1.Node)
-	curNode,err := fdc.nodeInformer.Lister().Get(node.Name)
-	if err != nil{
-		fdc.cloud.logger.With(zap.Error(err)).Error("Failed to obtain current node")
-	}
-
-	_, present := curNode.ObjectMeta.Labels["oke.oraclecloud.com/fault-domain"]
-	if present {
-		fdc.cloud.logger.Infof("The node %s has fault domain label already, will not process",node.Name)
-	}else{
-		fdc.queue.Add(node.Name)
-	}
-}
-
+//A function to run the worker which will process items in the queue
 func (fdc *FaultDomainController) runWorker() {
 	for fdc.processNextItem() {
 
 	}
 }
 
+//Used to sequentially process the keys present in the queue
 func (fdc *FaultDomainController) processNextItem() bool {
 
 	key, quit := fdc.queue.Get()
@@ -129,6 +120,7 @@ func (fdc *FaultDomainController) processNextItem() bool {
 	return true
 }
 
+//A function which is responsible for adding the fault domain label to the node if it is not already present
 func (fdc *FaultDomainController) processItem(key string) error {
 	cacheNode, err := fdc.nodeInformer.Lister().Get(key)
 
@@ -136,27 +128,32 @@ func (fdc *FaultDomainController) processItem(key string) error {
 		return err
 	}
 
-	curNode := cacheNode.DeepCopy()
+	_, present := cacheNode.ObjectMeta.Labels[FaultDomainLabel]
+	if present {
+		fdc.cloud.logger.Debugf("The node %s has fault domain label already, will not process",cacheNode.Name)
+	}else{
+		curNode := cacheNode.DeepCopy()
 
-	var instanceID string
-	var instance *core.Instance
-	instanceID, err = fdc.cloud.InstanceID(context.TODO(), types.NodeName(curNode.Name))
-	if err != nil {
-		fdc.cloud.logger.With(zap.Error(err)).Error("Failed to map provider ID to instance ID")
-		return err
-	}
-	instance, err = fdc.cloud.client.Compute().GetInstance(context.TODO(), instanceID)
-	if err != nil {
-		fdc.cloud.logger.With(zap.Error(err)).Error("Failed to get instance from instance ID")
-		return err
-	}
+		var instanceID string
+		var instance *core.Instance
+		instanceID, err = fdc.cloud.InstanceID(context.TODO(), types.NodeName(curNode.Name))
+		if err != nil {
+			fdc.cloud.logger.With(zap.Error(err)).Error("Failed to map provider ID to instance ID")
+			return err
+		}
+		instance, err = fdc.cloud.client.Compute().GetInstance(context.TODO(), instanceID)
+		if err != nil {
+			fdc.cloud.logger.With(zap.Error(err)).Error("Failed to get instance from instance ID")
+			return err
+		}
 
-	fdc.cloud.logger.Infof("Adding node label from cloud provider: %s=%s", "oke.oraclecloud.com/fault-domain", *instance.FaultDomain)
-	curNode.ObjectMeta.Labels["oke.oraclecloud.com/fault-domain"] = *instance.FaultDomain
+		fdc.cloud.logger.Infof("Adding node label from cloud provider: %s=%s", FaultDomainLabel, *instance.FaultDomain)
+		curNode.ObjectMeta.Labels[FaultDomainLabel] = *instance.FaultDomain
 
-	_, err = fdc.kubeClient.CoreV1().Nodes().Update(curNode)
-	if err != nil {
-		return err
+		_, err = fdc.kubeClient.CoreV1().Nodes().Update(curNode)
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }
