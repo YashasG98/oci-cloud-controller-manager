@@ -24,7 +24,6 @@ import (
 )
 
 var MaxRetries = 20
-var numberOfWorkers = 3
 
 type FaultDomainController struct {
 	nodeInformer coreinformers.NodeInformer
@@ -82,9 +81,7 @@ func (fdc *FaultDomainController) Run(stopCh <-chan struct{}) {
 		return
 	}
 
-	for i :=0; i < numberOfWorkers; i++ {
-		go wait.Until(fdc.runWorker, time.Second, stopCh)
-	}
+	wait.Until(fdc.runWorker, time.Second, stopCh)
 }
 
 func (fdc *FaultDomainController) updateFunc (_, newObj interface{}){
