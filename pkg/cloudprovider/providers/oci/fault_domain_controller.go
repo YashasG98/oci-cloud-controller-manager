@@ -64,6 +64,7 @@ func NewFaultDomainController(
 			node := obj.(*v1.Node)
 			fdc.queue.Add(node.Name)
 		},
+		UpdateFunc: fdc.updateFunc,
 	})
 
 	return fdc
@@ -83,6 +84,21 @@ func (fdc *FaultDomainController) Run(stopCh <-chan struct{}) {
 
 	for i :=0; i < numberOfWorkers; i++ {
 		go wait.Until(fdc.runWorker, time.Second, stopCh)
+	}
+}
+
+func (fdc *FaultDomainController) updateFunc (_, newObj interface{}){
+	node := newObj.(*v1.Node)
+	curNode,err := fdc.nodeInformer.Lister().Get(node.Name)
+	if err != nil{
+		fdc.cloud.logger.With(zap.Error(err)).Error("Failed to obtain current node")
+	}
+
+	_, present := curNode.ObjectMeta.Labels["oke.oraclecloud.com/fault-domain"]
+	if present {
+		fdc.cloud.logger.Infof("The node %s has fault domain label already, will not process",node.Name)
+	}else{
+		fdc.queue.Add(node.Name)
 	}
 }
 
