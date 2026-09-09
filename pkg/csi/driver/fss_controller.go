@@ -686,7 +686,7 @@ func extractStorageClassParameters(ctx context.Context, d *FSSControllerDriver, 
 			err := json.Unmarshal([]byte(securityAttributesString), &securityAttributes)
 			if err != nil {
 				log.With(zap.Error(err)).Error("Failed to parse securityAttributes provided in storage class. Please provide valid input.")
-				dimensionsMap[metrics.ComponentDimension] = util.GetComponentForMetricDimension(util.ErrValidation, util.CSIStorageType)
+				dimensionsMap[metrics.ComponentDimension] = util.GetMetricDimensionForComponent(util.ErrValidation, util.CSIStorageType)
 				metrics.SendMetricData(d.metricPusher, metrics.MTProvision, time.Since(startTime).Seconds(), dimensionsMap)
 				return log, nil, nil, status.Errorf(codes.InvalidArgument, "Failed to parse securityAttributes provided in storage class. Please provide valid input."), true
 			}
@@ -699,7 +699,7 @@ func extractStorageClassParameters(ctx context.Context, d *FSSControllerDriver, 
 		log.Info("Mount Target Ocid provided, new mount target will not be created")
 		if securityAttributesString, ok := parameters["securityAttributes"]; ok && securityAttributesString != "" {
 			log.Errorf("securityAttributes cannot be used with mountTargetOcid. Use mountTargetSubnetOcid to create a new mount target with security attributes.")
-			dimensionsMap[metrics.ComponentDimension] = util.GetComponentForMetricDimension(util.ErrValidation, util.CSIStorageType)
+			dimensionsMap[metrics.ComponentDimension] = util.GetMetricDimensionForComponent(util.ErrValidation, util.CSIStorageType)
 			metrics.SendMetricData(d.metricPusher, metrics.MTProvision, time.Since(startTime).Seconds(), dimensionsMap)
 			return log, nil, nil, status.Errorf(codes.InvalidArgument, "securityAttributes cannot be used with mountTargetOcid. Use mountTargetSubnetOcid to create a new mount target with security attributes"), true
 		}
